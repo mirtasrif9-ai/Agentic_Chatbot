@@ -30,6 +30,8 @@ def calculate_age(date_of_birth: str) -> int:
         age -= 1
     return age
 
+
+
 @mcp.tool()
 def random_number(min_value: int, max_value: int) -> int:
     """

@@ -65,3 +65,13 @@
   },
   "coworkUserFilesPath": "C:\\Users\\TASRIF\\Claude"
 }
+
+
+Weather-MCP:
+(mcp-weather) PS D:\AI_Trainning\Practices\Agentic_Chatbot\weather-mcp\mcp-weather> uv run mcp-weather
+
+Manim-Server:
+(venv) PS D:\AI_Trainning\Practices\Agentic_Chatbot\manim-mcp\manim-mcp-server> python src\manim_server.py
+
+Custom-MCP-Server
+(venv) PS D:\AI_Trainning\Practices\Agentic_Chatbot\custom-mcp-server> python server.py
