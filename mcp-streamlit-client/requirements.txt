@@ -1,0 +1,9 @@
+streamlit
+langchain
+langchain-core
+langchain-ollama
+langchain-mcp-adapters
+langgraph
+mcp==2.2.0
+fastmcp
+python-dotenv
