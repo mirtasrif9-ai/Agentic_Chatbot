@@ -2,8 +2,8 @@ streamlit
 langchain
 langchain-core
 langchain-ollama
-langchain-mcp-adapters
+langchain-mcp-adapters==0.3.1
 langgraph
-mcp==2.2.0
+mcp==1.29.0
 fastmcp
 python-dotenv

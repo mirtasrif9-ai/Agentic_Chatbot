@@ -40,8 +40,82 @@ IMPORTANT RULES:
 9. After receiving a tool result, answer the user using that result.
 10. Never respond with only the tool name.
 11. If a tool fails, clearly explain the error.
-"""
 
+MANIM RULES:
+
+12. When generating Manim code, always use:
+
+    from manim import *
+
+13. Every animation must define a Scene class.
+
+14. Every Scene class must contain:
+
+    def construct(self):
+
+15. The code must be directly executable by Manim.
+
+16. NEVER return escaped newline characters such as:
+
+    \\n
+
+    in the actual Manim source code.
+
+17. The Manim source must contain real Python line breaks.
+
+18. Keep the generated code self-contained.
+
+19. Use simple, reliable Manim APIs.
+
+20. For color changes, prefer:
+
+    self.play(
+        circle.animate.set_color(BLUE)
+    )
+
+21. For flipping an object, prefer:
+
+    self.play(
+        Flip(circle)
+    )
+
+    or another standard Manim animation that is known to
+    work with the current Manim version.
+
+22. For multiple requested effects, perform them as
+    separate animation steps when appropriate.
+
+23. Always include a short self.wait() at the end.
+
+24. Example:
+
+    from manim import *
+
+    class CircleAnimation(Scene):
+
+        def construct(self):
+
+            circle = Circle()
+
+            circle.set_fill(
+                RED,
+                opacity=0.5
+            )
+
+            self.play(
+                Create(circle)
+            )
+
+            self.play(
+                circle.animate.set_color(BLUE)
+            )
+
+            self.play(
+                Flip(circle)
+            )
+
+            self.wait(2)
+"""
 
 class MCPAgent:
 
@@ -83,40 +157,25 @@ class MCPAgent:
                 self.llm
             )
 
-    async def run_turn(
-        self,
-        history,
-        events,
-    ):
+    async def run_turn(self, history, events):
 
-        for _ in range(
-            MAX_TOOL_ROUNDS
-        ):
+        for _ in range(MAX_TOOL_ROUNDS):
 
-            response = await (
-                self.llm_with_tools
-                .ainvoke(history)
-            )
+            response = await self.llm_with_tools.ainvoke(history)
 
-            tool_calls = (
-                getattr(
-                    response,
-                    "tool_calls",
-                    None,
-                )
-                or []
-            )
+            tool_calls = getattr(
+                response,
+                "tool_calls",
+                None,
+            ) or []
 
-            # ------------------------------------------------
-            # Normal answer
-            # ------------------------------------------------
+            # ----------------------------------------------------
+            # No tool call = normal final answer
+            # ----------------------------------------------------
 
             if not tool_calls:
 
-                text = (
-                    response.content
-                    or ""
-                )
+                text = response.content or ""
 
                 history.append(
                     AIMessage(
@@ -126,43 +185,28 @@ class MCPAgent:
 
                 return text
 
-            # ------------------------------------------------
-            # Add AI tool request
-            # ------------------------------------------------
+            # ----------------------------------------------------
+            # Store AI tool-call message
+            # ----------------------------------------------------
 
-            history.append(
-                response
-            )
+            history.append(response)
 
-            # ------------------------------------------------
+            # ----------------------------------------------------
             # Execute tools
-            # ------------------------------------------------
+            # ----------------------------------------------------
 
-            for index, call in enumerate(
-                tool_calls
-            ):
+            for index, call in enumerate(tool_calls):
 
-                tool_name = call[
-                    "name"
-                ]
+                tool_name = call["name"]
 
-                arguments = call.get(
-                    "args"
-                ) or {}
+                arguments = call.get("args") or {}
 
-                if isinstance(
-                    arguments,
-                    str
-                ):
+                if isinstance(arguments, str):
 
                     try:
-
-                        arguments = json.loads(
-                            arguments
-                        )
+                        arguments = json.loads(arguments)
 
                     except json.JSONDecodeError:
-
                         arguments = {}
 
                 call_id = (
@@ -170,46 +214,51 @@ class MCPAgent:
                     or f"tool_call_{index}"
                 )
 
-                tool = (
-                    self.tools_by_name
-                    .get(tool_name)
+                tool = self.tools_by_name.get(
+                    tool_name
                 )
-
-                # --------------------------------------------
-                # Unknown tool
-                # --------------------------------------------
 
                 if tool is None:
 
                     success = False
 
                     output = (
-                        f"Unknown tool: "
-                        f"{tool_name}"
+                        f"Unknown tool: {tool_name}"
                     )
-
-                # --------------------------------------------
-                # Execute MCP tool
-                # --------------------------------------------
 
                 else:
 
                     try:
 
                         output = await asyncio.wait_for(
-                            tool.ainvoke(
-                                arguments
-                            ),
+                            tool.ainvoke(arguments),
                             timeout=TOOL_TIMEOUT,
                         )
 
-                        output = (
-                            result_to_text(
-                                output
-                            )
+                        output = result_to_text(output)
+
+                        # Some MCP tools return execution failures as
+                        # normal text instead of raising an exception.
+                        #
+                        # Detect those failures explicitly.
+
+                        failure_markers = (
+                            "Manim execution failed",
+                            "Error during Manim execution",
+                            "Execution failed",
+                            "Traceback (most recent call last)",
                         )
 
-                        success = True
+                        if any(
+                            marker in output
+                            for marker in failure_markers
+                        ):
+
+                            success = False
+
+                        else:
+
+                            success = True
 
                     except Exception as error:
 
@@ -222,43 +271,81 @@ class MCPAgent:
                             f"{error}"
                         )
 
+                # ------------------------------------------------
+                # Save event
+                # ------------------------------------------------
+
                 events.append(
                     {
-                        "name":
-                            tool_name,
-
-                        "args":
-                            arguments,
-
-                        "result":
-                            output,
-
-                        "ok":
-                            success,
+                        "name": tool_name,
+                        "args": arguments,
+                        "result": output,
+                        "ok": success,
                     }
                 )
 
+                # ------------------------------------------------
+                # Give result back to LLM
+                # ------------------------------------------------
+
                 history.append(
                     ToolMessage(
-                        tool_call_id=
-                            call_id,
-
-                        name=
-                            tool_name,
-
-                        content=
-                            output,
+                        tool_call_id=call_id,
+                        name=tool_name,
+                        content=output,
                     )
                 )
 
-        # ----------------------------------------------------
-        # Maximum tool rounds reached
-        # ----------------------------------------------------
+            # ----------------------------------------------------
+            # Special handling for Manim
+            # ----------------------------------------------------
 
-        final_response = await (
-            self.llm.ainvoke(
-                history
-            )
+            manim_events = [
+                event
+                for event in events
+                if event["name"] == "execute_manim_code"
+            ]
+
+            if manim_events:
+
+                latest = manim_events[-1]
+
+                if latest["ok"]:
+
+                    final_text = (
+                        "The Manim animation was generated "
+                        "successfully."
+                    )
+
+                    history.append(
+                        AIMessage(
+                            content=final_text
+                        )
+                    )
+
+                    return final_text
+
+                else:
+
+                    final_text = (
+                        "The Manim animation could not be generated. "
+                        "I received an execution error from the Manim server."
+                    )
+
+                    history.append(
+                        AIMessage(
+                            content=final_text
+                        )
+                    )
+
+                    return final_text
+
+        # --------------------------------------------------------
+        # Safety fallback
+        # --------------------------------------------------------
+
+        final_response = await self.llm.ainvoke(
+            history
         )
 
         text = (
